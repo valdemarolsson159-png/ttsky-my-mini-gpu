@@ -5,13 +5,14 @@ from cocotb.triggers import ClockCycles
 
 async def send_instruction(dut, inst):
     """Skickar en 16-bitars instruktion (2 byte) under prog_mode."""
-    for byte in [(inst >> 8) & 0xFF, inst & 0xFF]:
+    high_byte = (inst >> 8) & 0xFF
+    low_byte  = inst & 0xFF
+    for byte in (high_byte, low_byte):
         dut.ui_in.value = byte
         await ClockCycles(dut.clk, 1)
-        # Sätt prog_write_en (bit 1) = 1 samtidigt som prog_mode (bit 0) = 1
-        dut.uio_in.value = 0b00000011
+        dut.uio_in.value = 0b00000011  # prog_mode=1, prog_write_en=1
         await ClockCycles(dut.clk, 1)
-        dut.uio_in.value = 0b00000001
+        dut.uio_in.value = 0b00000001  # prog_mode=1, prog_write_en=0
         await ClockCycles(dut.clk, 1)
 
 
@@ -19,7 +20,6 @@ async def send_instruction(dut, inst):
 async def test_project(dut):
     dut._log.info("Startar test av tt_um_my_mini_gpu")
 
-    # Starta 50 MHz klocka (20 ns period)
     clock = Clock(dut.clk, 20, unit="ns")
     cocotb.start_soon(clock.start())
 
@@ -32,7 +32,7 @@ async def test_project(dut):
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 2)
 
-    # 1. Aktivera prog_mode (uio_in bit 0 = 1) och ladda program
+    # 1. Ladda program i prog_mode
     dut.uio_in.value = 0b00000001
     await ClockCycles(dut.clk, 1)
 
@@ -43,24 +43,23 @@ async def test_project(dut):
     await send_instruction(dut, 0x800F)  # PC 4: STORE r0
     await send_instruction(dut, 0xC000)  # PC 5: HALT
 
-    # Avsluta prog_mode
     dut.uio_in.value = 0
     await ClockCycles(dut.clk, 2)
 
-    # 2. Starta GPU (puls på start = uio_in bit 2)
+    # 2. Starta GPU (puls på uio_in bit 2)
     dut.uio_in.value = 0b00000100
     await ClockCycles(dut.clk, 1)
     dut.uio_in.value = 0
 
-    # Vänta 1 cykel tills GpuIoInterface går in i STATE_LOAD för Vektor A
+    # Vektor A: (2, 3, 4, 5)
     await ClockCycles(dut.clk, 1)
-    for val in:
+    for val in (2, 3, 4, 5):
         dut.ui_in.value = val
         await ClockCycles(dut.clk, 1)
 
-    # Vänta tills LOAD r0 slutförts och LOAD r1 startat (2 cykler)
+    # Vektor B: (3, 4, 5, 6)
     await ClockCycles(dut.clk, 2)
-    for val in:
+    for val in (3, 4, 5, 6):
         dut.ui_in.value = val
         await ClockCycles(dut.clk, 1)
 
